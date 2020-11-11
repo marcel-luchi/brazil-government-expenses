@@ -15,7 +15,7 @@ Create the below connections in Airflow:
 *transparencia_redshift*, type postgres, pointing to your redshift cluster/db.
 
 Create the below variables in Aiflow:
-*transparencia_access_key* create a key in portaltransparencia.gov.br 
+*transparencia_access_key* create a key in http://portaldatransparencia.gov.br/api-de-dados/cadastrar-email
 or use value 6ad76d85e57c0936d116ced2b3211d8c
 
 *transparencia_arn_rule*, arn rule from redshift cluster to s3 bucket.
