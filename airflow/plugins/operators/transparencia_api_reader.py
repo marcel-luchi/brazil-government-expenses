@@ -39,53 +39,64 @@ class TransparenciaApiReaderOperator(BaseOperator):
                               may take up to one hour.
 
     """
+
     def __init__(self,
-                 base_url,
                  aws_conn_id,
+                 storage_type,
+                 extraction_type,
                  s3_bucket,
-                 filename,
-                 api_endpoint,
                  access_key,
-                 pagina=1,
                  num_retries=5,
                  sleep_time=0,
-                 dependency_bucket="",
-                 dependency_file="",
-                 dependency_params=[],
                  limit_pages=0,
                  *args, **kwargs
                  ):
 
         super(TransparenciaApiReaderOperator, self).__init__(*args, **kwargs)
         self.aws_conn_id = aws_conn_id
-        self.base_url = base_url
         self.s3_bucket = s3_bucket
-        self.filename = filename
-        self.pagina = pagina
+        self.page = 1
         self.num_retries = num_retries
         self.sleep_time = sleep_time
-        self.api_endpoint = api_endpoint
-        self.url = base_url + api_endpoint
+        self.extraction_type = extraction_type
         self.headers = {"Accept": "*/*",
                         "chave-api-dados": access_key}
-        self.dependency_bucket = dependency_bucket
-        self.dependency_file = dependency_file
-        self.dependency_params = dependency_params
-        self.month = ''
-        self.year = ''
+        self.url = ''
         self.limit_pages = limit_pages
+        self.storage_type = storage_type
+        self.year = ''
+        self.month = ''
+        self.day = ''
+        self.extractions = {}
 
-    def __param_generator(self):
-        """Generates a list consisting in dictionaries that will be used in request for endpoints dependent
-        of values retrieved in another endpoint."""
-        self.log.info("Reading dependent parameters.")
-        with open(os.path.join(self.dependency_bucket.format(month=self.month, year=self.year),
-                               self.dependency_file.format(month=self.month, year=self.year)), "r") as f:
-            data = json.loads(f.read())
+    def __process(self, filename, processing_method, context):
+        if self.storage_type == "local":
+            with open(os.path.join(self.s3_bucket, filename).format(**context), 'w') as f:
+                f.write(json.dumps(processing_method(context), ensure_ascii=False))
+        else:
+            aws = AwsHook(self.aws_conn_id)
+            credentials = aws.get_credentials()
+            s3 = boto3.resource('s3',
+                                region_name='us-west-2',
+                                aws_access_key_id=credentials.access_key,
+                                aws_secret_access_key=credentials.secret_key
+                                )
+            s3.Object(self.s3_bucket.format(**context), filename.format(**context))\
+                .put(Body=json.dumps(processing_method(context), ensure_ascii=False))
 
-        return list(map(lambda item: dict(map(lambda key: (key[1], item.get(key[0])),
-                                              self.dependency_params)),
-                        data))
+    def __read_file(self, filename):
+        if self.storage_type == "local":
+            with open(os.path.join(self.s3_bucket, filename), 'r') as f:
+                return json.loads(f.read())
+        else:
+            aws = AwsHook(self.aws_conn_id)
+            credentials = aws.get_credentials()
+            s3 = boto3.resource('s3',
+                                region_name='us-west-2',
+                                aws_access_key_id=credentials.access_key,
+                                aws_secret_access_key=credentials.secret_key
+                                )
+            return json.loads(s3.Object(self.s3_bucket, filename).get['Body'].read())
 
     def __fetch_page(self, params, num_retries, sleep_time):
         """Fetch one JSON page from Portal da Transparencia API"""
@@ -123,9 +134,31 @@ class TransparenciaApiReaderOperator(BaseOperator):
             if curr_page is None or (parameters.get("pagina") >= self.limit_pages > 0):
                 break
             parameters.update({"pagina": curr_page + 1})
-        return json.dumps(data, ensure_ascii=False)
+        return data
 
-    def __process_vouchers(self):
+    def __fetch_default(self, context):
+        parameters = {"pagina": self.page}
+
+        return self.__fetch_pages(parameters)
+
+    def __fetch_agency_expenses(self, context):
+        agency_params = [('codigo', 'unidadeGestora')]
+        agency_expenses = []
+        params_list = list(map(lambda item: dict(map(lambda param: (param[1], item.get(param[0])),
+                                                     agency_params)),
+                               self.__read_file(self.extractions.get('government_agencies')
+                                                .get('filename')
+                                                .format(**context))))
+        for params in params_list:
+            for expense_phase in [1, 2, 3]:
+                params.update({'pagina': 1,
+                               'dataEmissao': f'{self.day}/{self.month}/{self.year}',
+                               'fase': expense_phase})
+                self.log.info(f"Fetching expenses for agency_code {params.get('unidadeGestora')} and phase {expense_phase}\n")
+                agency_expenses.extend(self.__fetch_pages(params))
+        return agency_expenses
+
+    def __fetch_corporate_card_expenses(self, context):
         """Method used to Retrieve Brazil's Federal Government
            Corporate Credit Card Vouchers from Portal da Transparencia
            As Year/Month (mesExtratoInicio/mesExtratoFim) are obrigatory request params
@@ -133,20 +166,30 @@ class TransparenciaApiReaderOperator(BaseOperator):
 
         parameters = {"mesExtratoInicio": f"{self.month}/{self.year}",
                       "mesExtratoFim": f"{self.month}/{self.year}",
-                      "pagina": self.pagina}
+                      "pagina": self.page}
         return self.__fetch_pages(parameters)
 
     def execute(self, context):
         """Method called by Airflow Task."""
-        self.month = "{execution_date.month}".format(**context).zfill(2)
-        self.year = "{execution_date.year}".format(**context)
-        aws = AwsHook(self.aws_conn_id)
-        credentials = aws.get_credentials()
-        s3 = boto3.resource('s3',
-                            region_name='us-west-2',
-                            aws_access_key_id=credentials.access_key,
-                            aws_secret_access_key=credentials.secret_key
-                            )
+        base_url = 'http://transparencia.gov.br/api-de-dados'
+        self.year = '{execution_date.year}'.format(**context)
+        self.month = '{execution_date.month}'.format(**context).zfill(2)
+        self.day = '{execution_date.day}'.format(**context).zfill(2)
 
-        filename = self.filename.format(month=self.month, year=self.year)
-        s3.Object(self.s3_bucket, filename).put(Body=self.__process_vouchers())
+        self.extractions = {'corporate_card_expenses': {'endpoint': '/cartoes',
+                                                        'filename': 'corporate-card-expenses-{ds}.json',
+                                                        'method': self.__fetch_corporate_card_expenses},
+                            'government_agencies': {'endpoint': '/orgaos-siafi',
+                                                    'filename': 'government-agency-{ds}.json',
+                                                    'method': self.__fetch_default},
+                            'agency_expenses_documents': {'endpoint': '/despesas/documentos',
+                                                          'filename': 'agency-expenses-{ds}.json',
+                                                          'method': self.__fetch_agency_expenses}}
+        if self.extractions.get(self.extraction_type) is None:
+            self.log.info(f"Extraction method is not valid, possible values are: {self.extractions.keys ()}")
+            raise Exception
+
+        self.url = base_url + self.extractions.get(self.extraction_type).get('endpoint')
+        self.__process(self.extractions.get(self.extraction_type).get('filename'),
+                       self.extractions.get(self.extraction_type).get('method'),
+                       context)

@@ -86,10 +86,8 @@ def main():
         df_vouchers = spark.read.json(os.path.join(input_data,
                                                    "vouchers_{year}_{month}.json"
                                                    ).format(year=year, month=month),
-                                      schema=voucher_schema)
-        partition = ["ano_extrato_part", "mes_extrato_part"]
-        columns = json_to_pagamentos
-        process_fact(df_vouchers, output_data, file, columns, partition)
+                                      schema=Staging.voucher_schema)
+
     else:
         df_vouchers = spark.read.json(input_data, schema=voucher_schema)
 
