@@ -14,8 +14,6 @@ from airflow.operators import (TransparenciaApiReaderOperator)
 
 from helpers.schemas import Schemas
 
-script_path = Variable.get("transparencia_script_path")
-arn_rule = Variable.get("transparencia_arn_rule")
 bucket = Variable.get("transparencia_bucket")
 access_key = Variable.get("transparencia_access_key")
 
