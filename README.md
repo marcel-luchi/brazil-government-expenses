@@ -64,7 +64,10 @@ data is already in the dimension tables and generates the staging tables with de
    5.1. Duplicate Keys in Dimension Tables
    5.2. Percentage of records in fact tables without reference to any dimension table
    
-   
+#### Data Modeling
+
+![Diagram](https://github.com/marcel-luchi/brazil-government-expenses/blob/master/diagram.png)   
+
 #### Future data updates
 Process is already prepared to append new data.
 Dimension tables work as append.
