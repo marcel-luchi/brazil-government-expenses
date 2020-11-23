@@ -1,5 +1,5 @@
-# brazil-government-credit-card-usage
-Build a datalake and a datawarehouse to analyze brazilian government credit card usage
+# brazil-government-expenses
+Build a datalakehouse analyze brazilian government direct expenses and credit card usage
 
 ## Installation
 

@@ -6,6 +6,7 @@ from requests import RequestException
 from airflow.models import BaseOperator
 import time
 from airflow.contrib.hooks.aws_hook import AwsHook
+from helpers.constants import RAW_DIR, VOUCHERS_DIR
 
 
 class TransparenciaApiReaderOperator(BaseOperator):
@@ -47,7 +48,7 @@ class TransparenciaApiReaderOperator(BaseOperator):
                  s3_bucket,
                  access_key,
                  num_retries=5,
-                 sleep_time=0,
+                 sleep_time=1,
                  limit_pages=0,
                  *args, **kwargs
                  ):
@@ -71,7 +72,7 @@ class TransparenciaApiReaderOperator(BaseOperator):
 
     def __process(self, filename, processing_method, context):
         if self.storage_type == "local":
-            with open(os.path.join(self.s3_bucket, filename).format(**context), 'w') as f:
+            with open(os.path.join(self.s3_bucket, RAW_DIR, VOUCHERS_DIR, filename).format(**context), 'w')  as f:
                 f.write(json.dumps(processing_method(context), ensure_ascii=False))
         else:
             aws = AwsHook(self.aws_conn_id)
@@ -81,7 +82,9 @@ class TransparenciaApiReaderOperator(BaseOperator):
                                 aws_access_key_id=credentials.access_key,
                                 aws_secret_access_key=credentials.secret_key
                                 )
-            s3.Object(self.s3_bucket.format(**context), filename.format(**context))\
+            s3.Object(self.s3_bucket.format(**context), os.path.join(RAW_DIR,
+                                                                     VOUCHERS_DIR,
+                                                                     filename.format(**context)))\
                 .put(Body=json.dumps(processing_method(context), ensure_ascii=False))
 
     def __read_file(self, filename):

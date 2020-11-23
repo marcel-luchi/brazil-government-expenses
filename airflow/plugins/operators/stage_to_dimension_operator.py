@@ -2,19 +2,17 @@ import os
 from helpers.schemas import Schemas
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
-from pyspark.sql import SparkSession
+from helpers.spark_utils import SparkUtils
 from helpers.constants import STAGING_DIR, DIMENSION_DIR
 from pyspark.sql.functions import monotonically_increasing_id as iid
 
 
 class StageToDimension(BaseOperator):
-    """This class loads Dimension tables data from staging tables in Redshift
+    """This class loads Dimension tables data from staging tables, it will append data in dimension tables
 
        Args:
+           bucket (str): Bucket in which source data is stored and target data will be written.
            table (str): Name of the table that will be loaded (mandatory if append=False)
-           redshift_conn_id (str): Airflow connection to database
-           query (str): Query that loads the data from staging to final table
-           append (bool): If True, appends data to the table, otherwise data will be overwriten
     """
     ui_color = '#80BD9E'
 
@@ -27,20 +25,14 @@ class StageToDimension(BaseOperator):
         self.bucket = bucket
         self.table = table
 
-    def __create_spark_session(self):
-        spark = SparkSession \
-            .builder \
-            .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:2.7.0") \
-            .getOrCreate()
-        spark.conf.set("spark.sql.shuffle.partitions", '4')
-        return spark
-
     def __join_load_dimension(self, spark, starting_id, dimension_path, join_keys):
+        """When dimensions has data from both CSV and JSON sources, this method is used to join
+        and remove duplicates from data before appending to the dimension table."""
         staging_expenses_path = os.path.join(self.bucket, STAGING_DIR, f'expenses_{self.table}')
         staging_vouchers_path = os.path.join(self.bucket, STAGING_DIR, f'vouchers_{self.table}')
 
-        df_expenses = spark.read.parquet(staging_expenses_path)
-        df_vouchers = spark.read.parquet(staging_vouchers_path)
+        df_expenses = spark.read.parquet(staging_expenses_path).dropna()
+        df_vouchers = spark.read.parquet(staging_vouchers_path).dropna()
         df_expenses.alias('a').join(
             df_vouchers.alias('b'),
             join_keys,
@@ -55,6 +47,7 @@ class StageToDimension(BaseOperator):
             .write.parquet(dimension_path, mode='append')
 
     def __load_dimension(self, spark, starting_id, dimension_path):
+        """Loads dimension data from stage when only data is found in only one source, CSV or JSON"""
         staging_path = os.path.join(self.bucket, STAGING_DIR, f'*{self.table}')
         spark.read.parquet(staging_path).coalesce(1).select((iid() + starting_id).alias(f"{self.table}_id"), "*") \
             .write.parquet(dimension_path, mode='append')
@@ -62,7 +55,7 @@ class StageToDimension(BaseOperator):
     def execute(self, context):
         """Method called by Airflow Task."""
         dimension_path = os.path.join(self.bucket, DIMENSION_DIR, self.table)
-        spark = self.__create_spark_session()
+        spark = SparkUtils.create_spark_session()
         try:
             starting_id = spark.read.parquet(dimension_path).groupBy() \
                 .max(f"{self.table}_id").first().asDict().get(f'max({self.table}_id)')

@@ -12,9 +12,13 @@ class TransparenciaPlugin(AirflowPlugin):
         operators.ExpensesDimensionRawToStage,
         operators.StageToDimension,
         operators.VouchersDimensionRawToStage,
-        operators.ExpensesFactFromRaw
+        operators.ExpensesFactFromRaw,
+        operators.VouchersFactFromRaw,
+        operators.DataQualityOperator,
+        operators.TransparenciaApiReaderOperator
     ]
 
     helpers = [
-        helpers.Schemas
+        helpers.Schemas,
+        helpers.SparkUtils
     ]

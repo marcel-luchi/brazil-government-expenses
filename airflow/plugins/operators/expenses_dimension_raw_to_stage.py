@@ -1,21 +1,22 @@
 import os
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
-from pyspark.sql import SparkSession
 from helpers import Schemas
+from helpers import SparkUtils
 from helpers.constants import EXPENSES_DIR, STAGING_DIR, \
     DIMENSION_DIR, RAW_DIR, COMMITMENT_FILENAME, SETTLEMENT_FILENAME, PAYMENT_FILENAME, \
     COMMITMENT_ITEM_FILENAME
 
 
 class ExpensesDimensionRawToStage(BaseOperator):
-    """This class loads Dimension tables data from staging tables in Redshift
+    """This class loads dimension tables data from staging tables in Redshift
+       The source data for this is Brazil's government Portal da Transparencia files
+
+       Downloaded from: http://transparencia.gov.br/download-de-dados/despesas
 
        Args:
+           bucket (str): Bucket in which source data is stored and target data will be written.
            table (str): Name of the table that will be loaded (mandatory if append=False)
-           redshift_conn_id (str): Airflow connection to database
-           query (str): Query that loads the data from staging to final table
-           append (bool): If True, appends data to the table, otherwise data will be overwriten
     """
     ui_color = '#80BD9E'
 
@@ -31,15 +32,11 @@ class ExpensesDimensionRawToStage(BaseOperator):
                                'encoding': 'ISO-8859-1',
                                'sep': ';'}
 
-    def __create_spark_session(self):
-        spark = SparkSession \
-            .builder \
-            .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:2.7.0") \
-            .getOrCreate()
-        spark.conf.set("spark.sql.shuffle.partitions", '4')
-        return spark
+
 
     def __stage_dimensions_comm_settl_pay(self, spark, params):
+        """Processes dimension data based on commitment, settlement and payment files.
+        This is done in order to create a unique dimension for all fact tables."""
         year = params.get('year')
         month = params.get('month')
         commitment_path = os.path.join(self.bucket,
@@ -68,6 +65,7 @@ class ExpensesDimensionRawToStage(BaseOperator):
         self.log.info(commitment_path)
         self.log.info(settlement_path)
         self.log.info(payment_path)
+        self.log.info(dimension_path)
         self.log.info("Writing output to:")
         self.log.info(staging_path)
 
@@ -95,15 +93,18 @@ class ExpensesDimensionRawToStage(BaseOperator):
             df_dimension = None
 
         if df_dimension is None:
-            df_commitments.unionByName(df_settlements.unionByName(df_payments)).dropDuplicates() \
+            df_commitments.unionByName(df_settlements.unionByName(df_payments))\
+                .dropDuplicates(params.get('table_key')).dropna(subset=params.get('table_key')) \
                 .write.parquet(staging_path, mode='overwrite')
 
         else:
-            df_commitments.unionByName(df_settlements.unionByName(df_payments)).dropDuplicates() \
+            df_commitments.unionByName(df_settlements.unionByName(df_payments))\
+                .dropDuplicates(params.get('table_key')).dropna(subset=params.get('table_key')) \
                 .join(df_dimension, params.get('table_key'), how='leftanti') \
                 .write.parquet(staging_path, mode='overwrite')
 
     def __stage_dimensions_one_source(self, spark, params):
+        """Process one file to create a dimension, for data that is only present in one source file."""
         year = params.get('year')
         month = params.get('month')
         path = os.path.join(self.bucket,
@@ -137,10 +138,11 @@ class ExpensesDimensionRawToStage(BaseOperator):
             df_dimension = None
 
         if df_dimension is None:
-            df_data.dropDuplicates().coalesce(1).write.parquet(staging_path, mode='overwrite')
+            df_data.dropDuplicates(params.get('table_key')).dropna(subset=params.get('table_key'))\
+                .coalesce(1).write.parquet(staging_path, mode='overwrite')
 
         else:
-            df_data.dropDuplicates() \
+            df_data.dropDuplicates(params.get('table_key')).dropna(subset=params.get('table_key')) \
                 .join(df_dimension, params.get('table_key'), how='leftanti')\
                 .write.parquet(staging_path, mode='overwrite')
 
@@ -148,7 +150,7 @@ class ExpensesDimensionRawToStage(BaseOperator):
         """Method called by Airflow Task."""
         year = '{execution_date.year}'.format(**context)
         month = '{execution_date.month}'.format(**context).zfill(2)
-        spark = self.__create_spark_session()
+        spark = SparkUtils.create_spark_session()
 
         extractions = {'agency':
                            {'params': {'table': self.table,
