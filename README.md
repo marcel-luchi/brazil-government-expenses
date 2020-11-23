@@ -102,3 +102,16 @@ task read_vouchers_operator in read_card_data.py has default sleep time of 1 sec
 requests, this is due to API restriction, that limits each user to place a maximum of 30 requests
 per minute. As each request responds in just over one second, this will prevent the API key from 
 being blocked.
+
+
+##Scenario Questions
+How you would approach the problem differently under the following scenarios:
+
+If the data was increased by 100x.
+
+If the dataset was increased by 100x we could largely keep the process the same since Spark is a great tool for processing giant datasets.
+As the process gathers data based on a monthly basis, if the total amount of data increases bu the monthly data does not, there will be no problems.
+If monthly data increases, we might want to spin up a more powerful EMR cluster in order to handle a 100x bigger dataset (increase the number of cores and perhaps consider an optimized EMR cluster, depending on if we care more about storage or more about computing power).
+
+If the pipelines were run on a daily basis by 7am.
+There will be no problem, as the process gathers data from all the execution_date month and overwrites the month partition in fact tables.
