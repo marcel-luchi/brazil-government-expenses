@@ -28,27 +28,34 @@ Also normalized data from 2017 to 2019 is available in the dimension/ and fact/ 
 
 ### Bucket Structure
 *bucket*/raw_data/despesas/ - CSV files downloaded from Brazil Government Portal da Transparencia
+
 *bucket*/raw_data/credit_card_vouchers - Vouchers from corporate credit card, extracted from API in task "Extract_Card_Vouchers"
+
 *bucket*/staging/ - process generate "temp" files needed for table calculations
+
 *buket*/dimension/ - dimension tables are stored in this directory
+
 *bucket*/fact/ - fact tables are stored in this directory.
 
 ### Data Cleansing
 Date fields, stored as string in the files needed to be parsed, so they can be stored as Date format.
+
 Value fields, needed parsing, as in Brazil's locale, comma is used as decimal separator and period as thousand separator.
 So periods needed to be removed from string and then comma transformed to period so the number could be cast as float.
 
 ### Source Data (Considering Data from 2017 to 2019)
 #### Direct Expenses 
 Despesas_Pagamento_YYYYMMDD.csv - 28M rows
+
 Despesas_Empenho_YYYYMMDD.csv - 10M rows
 
 #### Credit Card Vouchers
 corporate-card-expenses_YYYY-MM-DD - 1M rows
 
 ### Analytics Schema
-Four dimension tables were extracted from data:
-agency, city, expense_type, vendor
+Three dimension tables were extracted from data:
+
+agency, city, vendor
 
 Agency and vendor tables are obtained from both sources,
 and joined, to enrich the output data. 
@@ -110,13 +117,18 @@ being blocked.
 
 
 ##Scenario Questions
-How you would approach the problem differently under the following scenarios:
+*How you would approach the problem differently under the following scenarios:*
 
-If the data was increased by 100x.
+**If the data was increased by 100x.**
 
 As the process gathers data based on a monthly basis, if the total amount of data increases bu the monthly data does not, there will be no problems.
 If monthly data increases by 100x, we might want to spin up a more powerful EMR cluster in order to handle a 100x bigger dataset (increase the number of cores and perhaps consider an optimized EMR cluster, depending on if we care more about storage or more about computing power).
 
-If the pipelines were run on a daily basis by 7am.
-There will be no problem, as the process gathers data from all the execution_date month and overwrites the month partition in fact tables.
+**If the pipelines were run on a daily basis by 7am.**
+
 Only airflow schedule will need to be changed.
+
+The process gathers data from all the execution_date month and overwrites the month partition in fact tables.
+
+For dimension tables, as the process only appends new data, no changes in code are needed too.
+
