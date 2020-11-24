@@ -56,9 +56,11 @@ class VouchersDimensionRawToStage(BaseOperator):
 
         try:
             df_dimension = spark.read.parquet(dimension_path)
+            self.log.info(f'Dimension found, has {df_dimension.count()} records')
 
         except:
             df_dimension = None
+            self.log.info('Dimension not found.')
 
         if df_dimension is None:
             df_data.dropDuplicates(params.get('table_key')).dropna(subset=params.get('table_key'))\

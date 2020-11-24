@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import requests
 import boto3
@@ -55,7 +56,7 @@ class TransparenciaApiReaderOperator(BaseOperator):
 
         super(TransparenciaApiReaderOperator, self).__init__(*args, **kwargs)
         self.aws_conn_id = aws_conn_id
-        self.s3_bucket = s3_bucket
+        self.s3_bucket = re.sub('^.*//', '', s3_bucket)
         self.page = 1
         self.num_retries = num_retries
         self.sleep_time = sleep_time

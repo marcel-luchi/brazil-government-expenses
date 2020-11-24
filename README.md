@@ -19,7 +19,12 @@ in CSV format.
 
 Processed data from 2017 to 2019 has been processed and are available in dimension and fact directories.
 
-Raw data from 2017 to 2020 is available in the bucket.
+#### The below S3 bucket contans the data processed in the project.
+
+https://s3.console.aws.amazon.com/s3/buckets/brgovdata
+
+Raw data from 2017 to 2020 is available in the raw_data/ folder.
+Also normalized data from 2017 to 2019 is available in the dimension/ and fact/ folders.
 
 ### Bucket Structure
 *bucket*/raw_data/despesas/ - CSV files downloaded from Brazil Government Portal da Transparencia
@@ -109,9 +114,9 @@ How you would approach the problem differently under the following scenarios:
 
 If the data was increased by 100x.
 
-If the dataset was increased by 100x we could largely keep the process the same since Spark is a great tool for processing giant datasets.
 As the process gathers data based on a monthly basis, if the total amount of data increases bu the monthly data does not, there will be no problems.
-If monthly data increases, we might want to spin up a more powerful EMR cluster in order to handle a 100x bigger dataset (increase the number of cores and perhaps consider an optimized EMR cluster, depending on if we care more about storage or more about computing power).
+If monthly data increases by 100x, we might want to spin up a more powerful EMR cluster in order to handle a 100x bigger dataset (increase the number of cores and perhaps consider an optimized EMR cluster, depending on if we care more about storage or more about computing power).
 
 If the pipelines were run on a daily basis by 7am.
 There will be no problem, as the process gathers data from all the execution_date month and overwrites the month partition in fact tables.
+Only airflow schedule will need to be changed.

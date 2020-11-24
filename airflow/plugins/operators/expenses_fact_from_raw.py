@@ -30,7 +30,7 @@ class ExpensesFactFromRaw(BaseOperator):
         self.bucket = bucket
         self.table = table
         self.csv_properties = {'header': True,
-                               'encoding': 'ISO-8859-1',
+                               'encoding': 'UTF-8',
                                'sep': ';'}
 
 

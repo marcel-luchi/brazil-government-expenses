@@ -29,7 +29,7 @@ class ExpensesDimensionRawToStage(BaseOperator):
         self.bucket = bucket
         self.table = table
         self.csv_properties = {'header': True,
-                               'encoding': 'ISO-8859-1',
+                               'encoding': 'UTF-8',
                                'sep': ';'}
 
 
@@ -88,9 +88,11 @@ class ExpensesDimensionRawToStage(BaseOperator):
                                      ).selectExpr(params.get('schema'))
         try:
             df_dimension = spark.read.parquet(dimension_path)
+            self.log.info(f'Dimension found, has {df_dimension.count()} records')
 
         except:
             df_dimension = None
+            self.log.info('Dimension not found.')
 
         if df_dimension is None:
             df_commitments.unionByName(df_settlements.unionByName(df_payments))\
@@ -133,9 +135,11 @@ class ExpensesDimensionRawToStage(BaseOperator):
 
         try:
             df_dimension = spark.read.parquet(dimension_path)
+            self.log.info(f'Dimension found, has {df_dimension.count()} records')
 
         except:
             df_dimension = None
+            self.log.info('Dimension not Found.')
 
         if df_dimension is None:
             df_data.dropDuplicates(params.get('table_key')).dropna(subset=params.get('table_key'))\

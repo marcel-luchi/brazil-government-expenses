@@ -1,8 +1,11 @@
+import os
+
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.bash_operator import BashOperator
 from airflow.models import Variable
+from airflow.contrib.hooks.aws_hook import AwsHook
 
 from airflow.operators import (ExpensesDimensionRawToStage)
 from airflow.operators import (StageToDimension)
@@ -16,6 +19,10 @@ from helpers.schemas import Schemas
 
 bucket = Variable.get("transparencia_bucket")
 access_key = Variable.get("transparencia_access_key")
+credentials = AwsHook("aws_credentials").get_credentials()
+
+os.environ['AWS_ACCESS_KEY_ID'] = credentials.access_key
+os.environ['AWS_SECRET_ACCESS_KEY'] = credentials.secret_key
 
 default_args = {'start_date': datetime(2020, 1, 1),
                 'end_date': datetime(2020, 1, 31),
@@ -24,7 +31,7 @@ default_args = {'start_date': datetime(2020, 1, 1),
                 'retries': 5,
                 'retry_delay': timedelta(minutes=2)}
 
-dag = DAG('Extract_Government_Data',
+dag = DAG('ETL_Government_Data',
           default_args=default_args,
           description="Reads data from Brazil's federal government API and writes to s3_bucket.",
           schedule_interval="0 0 20 * *",
@@ -44,6 +51,7 @@ extract_credit_card_vouchers = TransparenciaApiReaderOperator(task_id='Extract_C
                                                               aws_conn_id='aws_credentials',
                                                               extraction_type='corporate_card_expenses',
                                                               s3_bucket=bucket,
+                                                              limit_pages=10,
                                                               access_key=access_key)
 
 read_gov_agency = ExpensesDimensionRawToStage(task_id='Stage_Agencies',
@@ -57,12 +65,6 @@ read_vendors = ExpensesDimensionRawToStage(task_id='Stage_Vendors',
                                                         dag=dag,
                                                         bucket=bucket,
                                                         table='vendor',
-                                                        provide_context=True
-                                                        )
-read_expense_type = ExpensesDimensionRawToStage(task_id='Stage_Expense_Type',
-                                                        dag=dag,
-                                                        bucket=bucket,
-                                                        table='expense_type',
                                                         provide_context=True
                                                         )
 
@@ -110,16 +112,6 @@ data_quality_vendor = DataQualityOperator(task_id='Data_Quality_Vendor',
                                           validation_type='dimension_duplicate_keys',
                                           keys_list = Schemas.vendor_keys)
 
-load_dim_expense_type = StageToDimension(task_id='Load_Dim_Expense_Type',
-                                   dag=dag,
-                                   bucket=bucket,
-                                   table='expense_type')
-data_quality_expense_type = DataQualityOperator(task_id='Data_Quality_Expense_Type',
-                                          dag = dag,
-                                          bucket = bucket,
-                                          table='expense_type',
-                                          validation_type='dimension_duplicate_keys',
-                                          keys_list = Schemas.expense_type_keys)
 
 load_dim_city = StageToDimension(task_id='Load_Dim_City',
                                    dag=dag,
@@ -176,32 +168,27 @@ extract_credit_card_vouchers >> end_extraction_operator
 
 end_extraction_operator >> read_gov_agency
 end_extraction_operator >> read_vendors
-end_extraction_operator >> read_expense_type
 end_extraction_operator >> read_voucher_vendors
 end_extraction_operator >> read_voucher_agencies
 end_extraction_operator >> read_voucher_cities
 
 read_gov_agency >> end_staging_operator
 read_vendors >> end_staging_operator
-read_expense_type >> end_staging_operator
 read_voucher_vendors >> end_staging_operator
 read_voucher_agencies >> end_staging_operator
 read_voucher_cities >> end_staging_operator
 
 end_staging_operator >> load_dim_agency
 end_staging_operator >> load_dim_vendor
-end_staging_operator >> load_dim_expense_type
 end_staging_operator >> load_dim_city
 
 
 load_dim_vendor >> data_quality_vendor
 load_dim_agency >> data_quality_agency
-load_dim_expense_type >> data_quality_expense_type
 load_dim_city >> data_quality_city
 
 data_quality_vendor >> end_dimension_operator
 data_quality_agency >> end_dimension_operator
-data_quality_expense_type >> end_dimension_operator
 data_quality_city >> end_dimension_operator
 
 end_dimension_operator >> load_fact_commitment
