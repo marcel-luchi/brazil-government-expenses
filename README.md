@@ -10,7 +10,17 @@ Since 2014 a law in Brazil obligates government to provide access to all their d
 This project reads data from two "Portal da Transparencia" sources.
 
 The processing is done using pyspark and everything is orchestrated by Airflow. In a monthly DAG that transforms 
-the data in a structured datawarehouse in the bucket, generating parquet tables.  
+the data in a structured datawarehouse in the bucket, generating parquet tables.
+
+Spark was chosen due to the high scalability it alows in processing the data.
+The parallel architecture from Spark makes possible to create a EMR cluster meeting the processing power needed.
+
+Airflow was chosen as orchestrator and scheduler, as it's DAGs are a very simple way to create dependencies between each process
+and also has tools for monitoring the execution steps, such as the graph view and dag view, SLAs and so on.
+
+Parquet tables in S3 were the storage choice, as many drivers are available to read parquet files and storage in S3 is very cost effective.
+If high intensity is needed in the data, a step copying the final data to a "cache" local server would eliminate the need of
+many reads in S3. 
 
 Card data is retrieved directly from the Portal da Transparencia API, and raw data is saved to the bucket, in Json format.
 
@@ -132,3 +142,11 @@ The process gathers data from all the execution_date month and overwrites the mo
 
 For dimension tables, as the process only appends new data, no changes in code are needed too.
 
+**If the database needed to be accessed by 100+ people.**
+
+If the database needed to be acessed by 100+ people, one solution would be to 
+copy the final tables to a local server, as final tables are about 1/50 the size of the original data.
+
+Other than that, if people has no need to analyze analytical data, it would be possible to create a process to load a datamart
+with aggregated data based on user needs and stored in a RDMBS such as Postgres, this way reducing the volume of reads in S3,
+improving performance and enabling analytic tools to connect to the database..
